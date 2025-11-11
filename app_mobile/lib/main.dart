@@ -1,19 +1,9 @@
-// main.dart - ĐÃ SỬA LỖI
-
+// lib/main.dart
 import 'package:flutter/material.dart';
-// 🔹 KHÔNG CẦN import 'package:camera/camera.dart';
 import 'screen/yolo_screen.dart';
 
-// 🔹 KHÔNG CẦN biến 'cameras'
-// late List<CameraDescription> cameras;
-
 Future<void> main() async {
-  // 🔹 Vẫn cần dòng này
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 🔹 KHÔNG CẦN khởi tạo camera ở đây
-  // cameras = await availableCameras();
-
   runApp(const MyApp());
 }
 
@@ -28,7 +18,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
       ),
-      home: const HomeScreen(), // 🔹 Bắt đầu với HomeScreen
+      home: const HomeScreen(),
     );
   }
 }
@@ -42,16 +32,10 @@ class HomeScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       body: Center(
         child: GestureDetector(
-          onTap: () {
-            // 🔹 CHỈ CẦN ĐIỀU HƯỚNG
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                // 🔹 Gọi YoloScreen() mà không cần tham số
-                builder: (context) => const YoloScreen(),
-              ),
-            );
-          },
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const YoloScreen()),
+          ),
           child: Container(
             width: 200,
             height: 200,

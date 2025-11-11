@@ -29,5 +29,5 @@ flutter:
 
   assets:
     - assets/ai_button.jpg
-    - assets/model_face.tflite
-    - assets/model_face.txt
+#    - assets/model_face.tflite
+#    - assets/model_face.txt
