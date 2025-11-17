@@ -13,8 +13,11 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   camera: any
-  ultralytics_yolo: ^0.1.39
+  ultralytics_yolo: ^0.1.40
+  tflite_flutter: ^0.12.1
+
   flutter_launcher_icons: ^0.13.1
+  path_provider: ^2.1.1
 
 
 
@@ -36,5 +39,5 @@ flutter:
 
   assets:
     - assets/ai_button.jpg
+    - assets/classification_emotion.tflite
 #    - assets/model_face.tflite
-#    - assets/model_face.txt
