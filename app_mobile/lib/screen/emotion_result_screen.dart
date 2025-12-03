@@ -149,7 +149,7 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
       }
     }
 
-    if (bestConfidence > 0.25) { // Chỉ chấp nhận nếu confidence > 25%
+    if (bestConfidence > 0.10) { // Chỉ chấp nhận nếu confidence > 25%
       return {
         'emotion': bestEmotion,
         'confidence': bestConfidence,

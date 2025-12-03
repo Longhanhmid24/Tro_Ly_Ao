@@ -84,7 +84,7 @@ class _YoloScreenState extends State<YoloScreen> {
       print('📐 Scale factors: scaleX=$scaleX, scaleY=$scaleY');
 
       // 5. Scale bounding box lên kích thước ảnh thực
-      final padding = -30.0;
+      final padding = 25.0;
 
       final scaledLeft = (box.left * scaleX - padding).clamp(0.0, originalImage.width.toDouble());
       final scaledTop = (box.top * scaleY - padding).clamp(0.0, originalImage.height.toDouble());
