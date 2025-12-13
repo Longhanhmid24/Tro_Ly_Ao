@@ -1,8 +1,10 @@
-// emotion_result_screen.dart (PHIÊN BẢN SỬA LỖI SHAPE)
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:app_mobile/chatbot/chat.dart';
+
 
 class EmotionResultScreen extends StatefulWidget {
   final String faceImagePath;
@@ -298,6 +300,30 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
                   label: const Text('Thử lại'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  ),
+                ),
+              const SizedBox(height: 20),
+              if (!_isAnalyzing)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // ✅ TẠO CÂU CHAT TRỰC TIẾP TỪ KẾT QUẢ YOLO
+
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatBotScreen(
+                          firstEmotion: _emotion,
+                          confidence: _confidence,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.smart_toy),
+                  label: const Text('Chat với trợ lý AI'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
                     padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   ),
                 ),

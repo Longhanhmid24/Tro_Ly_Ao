@@ -1,14 +1,27 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'screen/yolo_screen.dart';
+import 'config/ip_input_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool hasIP = false;
+
+  void onIPConfirmed() {
+    setState(() {
+      hasIP = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +31,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
       ),
-      home: const HomeScreen(),
+      home: hasIP
+          ? const HomeScreen()
+          : IpInputScreen(onSuccess: onIPConfirmed),
     );
   }
 }

@@ -5,6 +5,9 @@ import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:image/image.dart' as img;
+import '../global.dart';
+
+final apiUrl = "http://$globalIP:8000/generate";
 
 class YoloScreen extends StatefulWidget {
   const YoloScreen({super.key});

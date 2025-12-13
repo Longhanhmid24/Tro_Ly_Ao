@@ -22,6 +22,7 @@ dependencies:
 
 
   image: ^4.0.17
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
