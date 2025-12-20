@@ -1,3 +1,4 @@
+// lib/screen/emotion_result_screen.dart
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -5,6 +6,10 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:app_mobile/chatbot/chat.dart';
 
+// --- THÊM 2 IMPORT MỚI ---
+import 'package:url_launcher/url_launcher.dart'; // Để mở link nhạc
+import '../emotion_data.dart'; // Để lấy dữ liệu lời khuyên & nhạc
+// -------------------------
 
 class EmotionResultScreen extends StatefulWidget {
   final String faceImagePath;
@@ -23,9 +28,15 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
   double _confidence = 0.0;
   bool _isAnalyzing = true;
 
+  // --- BIẾN MỚI CHO TÍNH NĂNG GIẢI TRÍ ---
+  String _quote = '';
+  String _songTitle = '';
+  String _songUrl = '';
+  Color _themeColor = Colors.blue;
+  // ---------------------------------------
+
   Interpreter? _interpreter;
 
-  // Model của bạn có 8 class cảm xúc
   final List<String> _labels = [
     'Anger',
     'Contempt',
@@ -49,7 +60,6 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
   };
 
   String _getEmotionName(String key) => _emotions[key]?[0] ?? 'Không xác định';
-  Color _getEmotionColor(String key) => _emotions[key]?[1] ?? Colors.grey;
 
   @override
   void initState() {
@@ -57,53 +67,70 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
     _loadModelAndAnalyze();
   }
 
+  /// Hàm mở link nhạc
+  Future<void> _launchMusicUrl() async {
+    if (_songUrl.isEmpty) return;
+    
+    final Uri url = Uri.parse(_songUrl);
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not launch $_songUrl');
+      }
+    } catch (e) {
+      print("Lỗi mở link: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể mở bài hát này!')),
+      );
+    }
+  }
+
   Future<void> _loadModelAndAnalyze() async {
     setState(() => _isAnalyzing = true);
 
     try {
-      print('📦 Loading emotion model (tflite_flutter)...');
+      print('📦 Loading emotion model...');
       _interpreter = await Interpreter.fromAsset('assets/classification_emotion.tflite');
 
       final inputShape = _interpreter!.getInputTensor(0).shape;
       final outputShape = _interpreter!.getOutputTensor(0).shape;
-      print('📐 Input shape: $inputShape');  // Sẽ là [1, 640, 640, 3]
-      print('📐 Output shape: $outputShape'); // Sẽ là [1, 12, 8400]
-      print('✅ Model loaded successfully');
 
-      print('📸 Reading face image...');
       final faceImage = await _loadImage(widget.faceImagePath);
       if (faceImage == null) throw Exception('Không thể đọc ảnh');
 
-      print('🔄 Preprocessing image...');
       final input = _preprocessImage(faceImage, inputShape);
 
-      print('🤖 Running inference...');
-
-      // ✅ SỬA LỖI 1: TẠO ĐÚNG OUTPUT BUFFER 3D
-      // Tạo một buffer có shape [1, 12, 8400]
+      // Tạo buffer output
       final output = List.generate(
-        outputShape[0], // 1
-            (_) => List.generate(
-          outputShape[1], // 12 (4 box + 8 classes)
-              (_) => List.filled(outputShape[2], 0.0), // 8400
+        outputShape[0],
+        (_) => List.generate(
+          outputShape[1],
+          (_) => List.filled(outputShape[2], 0.0),
         ),
       );
 
       _interpreter!.run(input, output);
-      print('📊 Inference complete. Processing output...');
 
-      // ✅ SỬA LỖI 2: XỬ LÝ OUTPUT 3D CỦA YOLO
       final detectionResult = _processYoloOutput(output, outputShape);
 
       if (detectionResult == null) {
-        throw Exception('Không tìm thấy cảm xúc nào trong ảnh crop');
+        throw Exception('Không tìm thấy cảm xúc nào rõ ràng');
       }
 
-      print('🎭 Emotion: ${detectionResult['emotion']} (${(detectionResult['confidence']! * 100).toStringAsFixed(1)}%)');
+      // --- CẬP NHẬT DỮ LIỆU TỪ EMOTION_DATA ---
+      final emotionKey = detectionResult['emotion']!;
+      final content = EmotionData.getContent(emotionKey);
+      // ----------------------------------------
 
       setState(() {
-        _emotion = detectionResult['emotion']!;
+        _emotion = emotionKey;
         _confidence = detectionResult['confidence']!;
+        
+        // Cập nhật thông tin giải trí
+        _quote = content['quote'];
+        _songTitle = content['songTitle'];
+        _songUrl = content['songUrl'];
+        _themeColor = content['color'];
+
         _isAnalyzing = false;
       });
 
@@ -117,26 +144,20 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
     }
   }
 
-  /// ✅ HÀM MỚI: Xử lý output [1, 12, 8400] của model YOLO
+  // --- GIỮ NGUYÊN LOGIC XỬ LÝ MODEL CỦA BẠN ---
   Map<String, dynamic>? _processYoloOutput(List<List<List<double>>> output, List<int> outputShape) {
-    // output[0] sẽ có shape [12, 8400]
     final results = output[0];
-    final numBoxes = outputShape[2]; // 8400
-    final numClasses = _labels.length; // 8
-    // 12 channels = 4 box (x,y,w,h) + 8 class scores
+    final numBoxes = outputShape[2];
+    final numClasses = _labels.length;
 
     double bestConfidence = 0.0;
     String bestEmotion = 'Neutral';
 
-    // Duyệt qua tất cả 8400 box
     for (int i = 0; i < numBoxes; i++) {
-      // Tìm class có score cao nhất *trong box này*
       double maxClassScore = 0.0;
       int maxClassIndex = -1;
 
       for (int c = 0; c < numClasses; c++) {
-        // Lấy score của class 'c' tại box 'i'
-        // Score bắt đầu từ channel thứ 4 (sau x,y,w,h)
         final score = results[4 + c][i];
         if (score > maxClassScore) {
           maxClassScore = score;
@@ -144,40 +165,34 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
         }
       }
 
-      // So sánh score của box này với score cao nhất đã tìm thấy
       if (maxClassScore > bestConfidence) {
         bestConfidence = maxClassScore;
         bestEmotion = _labels[maxClassIndex];
       }
     }
 
-    if (bestConfidence > 0.10) { // Chỉ chấp nhận nếu confidence > 25%
+    if (bestConfidence > 0.10) {
       return {
         'emotion': bestEmotion,
         'confidence': bestConfidence,
       };
     }
-    return null; // Không tìm thấy gì
+    return null;
   }
-
 
   Future<img.Image?> _loadImage(String path) async {
     try {
       final bytes = await File(path).readAsBytes();
       return img.decodeImage(bytes);
     } catch (e) {
-      print('❌ Error loading image: $e');
       return null;
     }
   }
 
   List<List<List<List<double>>>> _preprocessImage(img.Image image, List<int> inputShape) {
-    // inputShape là [1, height, width, channels]
-    final height = inputShape[1]; // 640
-    final width = inputShape[2];  // 640
-    final channels = inputShape[3]; // 3
-
-    print('🔧 Preprocessing to: ${width}x${height}x${channels}');
+    final height = inputShape[1];
+    final width = inputShape[2];
+    final channels = inputShape[3];
 
     final resized = img.copyResize(image, width: width, height: height);
     final processedImage = channels == 1 ? img.grayscale(resized) : resized;
@@ -185,9 +200,9 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
     return [
       List.generate(
         height,
-            (y) => List.generate(
+        (y) => List.generate(
           width,
-              (x) {
+          (x) {
             final pixel = processedImage.getPixel(x, y);
             if (channels == 1) {
               return [pixel.r / 255.0];
@@ -212,7 +227,6 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Phần UI này giữ nguyên, không có lỗi
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -225,107 +239,167 @@ class _EmotionResultScreenState extends State<EmotionResultScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 20),
+              
+              // Ảnh chụp
               Container(
-                width: 300,
-                height: 400,
+                width: 250, // Thu nhỏ lại chút cho đẹp
+                height: 330,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: _isAnalyzing ? Colors.white : _themeColor, width: 3),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(17),
                   child: Image.file(
                     File(widget.faceImagePath),
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
-              const SizedBox(height: 40),
+              
+              const SizedBox(height: 30),
+
               if (_isAnalyzing)
-                Column(
-                  children: const [
+                const Column(
+                  children: [
                     CircularProgressIndicator(color: Colors.blue),
-                    SizedBox(height: 20),
-                    Text(
-                      'Đang phân tích cảm xúc...',
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                    ),
+                    SizedBox(height: 15),
+                    Text('Đang đọc vị cảm xúc...', style: TextStyle(color: Colors.white70)),
                   ],
                 )
               else if (_emotion == 'Error')
-                const Text(
-                  'Lỗi khi phân tích!',
-                  style: TextStyle(color: Colors.red, fontSize: 18),
-                )
+                const Text('Có lỗi xảy ra', style: TextStyle(color: Colors.red))
               else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 30),
-                  decoration: BoxDecoration(
-                    color: _getEmotionColor(_emotion).withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _getEmotionColor(_emotion).withOpacity(0.5),
-                        blurRadius: 30,
-                        spreadRadius: 10,
+                Column(
+                  children: [
+                    // --- KHUNG KẾT QUẢ + QUOTE ---
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: _themeColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _themeColor, width: 1),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        _getEmotionName(_emotion),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      child: Column(
+                        children: [
+                          Text(
+                            _getEmotionName(_emotion).toUpperCase(),
+                            style: TextStyle(
+                              color: _themeColor,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          Text(
+                            'Độ tin cậy: ${(_confidence * 100).toStringAsFixed(1)}%',
+                            style: const TextStyle(color: Colors.white54, fontSize: 14),
+                          ),
+                          const Divider(color: Colors.white24, height: 30),
+                          
+                          // Hiển thị Lời khuyên (Quote)
+                          Text(
+                            '"$_quote"',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${(_confidence * 100).toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 24,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 40),
-              if (!_isAnalyzing)
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Thử lại'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  ),
-                ),
-              const SizedBox(height: 20),
-              if (!_isAnalyzing)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // ✅ TẠO CÂU CHAT TRỰC TIẾP TỪ KẾT QUẢ YOLO
+                    ),
 
+                    const SizedBox(height: 20),
 
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatBotScreen(
-                          firstEmotion: _emotion,
-                          confidence: _confidence,
+                    // --- NÚT NGHE NHẠC ---
+                    GestureDetector(
+                      onTap: _launchMusicUrl,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.grey.shade900, Colors.black],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.white24),
+                          boxShadow: [
+                            BoxShadow(color: _themeColor.withOpacity(0.3), blurRadius: 10)
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.music_note, color: _themeColor, size: 30),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Gợi ý bài hát:",
+                                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                                  ),
+                                  Text(
+                                    _songTitle,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.play_circle_fill, color: Colors.white, size: 30),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.smart_toy),
-                  label: const Text('Chat với trợ lý AI'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  ),
+                    ),
+                    // ---------------------
+
+                    const SizedBox(height: 30),
+
+                    // Các nút chức năng cũ
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Thử lại'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(width: 15),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatBotScreen(
+                                  firstEmotion: _emotion,
+                                  confidence: _confidence,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.smart_toy),
+                          label: const Text('Tâm sự AI'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _themeColor, // Nút đổi màu theo cảm xúc
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
             ],
           ),
